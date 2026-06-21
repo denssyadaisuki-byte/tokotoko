@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>列車位置情報案内システム トコトコ</title>
+    <style>
+        /* 全体・共通設定 */
+        body { font-family: 'MS Gothic', 'Yu Gothic', sans-serif; background-color: #f0f0f0; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        .app-container { width: 100vw; max-width: 500px; height: 100vh; background: #fff; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .screen { display: none; flex-direction: column; height: 100%; box-sizing: border-box; }
+        .active { display: flex; }
+        
+        /* エラーメッセージ用 */
+        .error-msg { color: red; font-size: 14px; text-align: center; min-height: 20px; font-weight: bold; margin-bottom: 10px; }
+
+        /* --- ログイン画面 (トコトコ風) --- */
+        #login-screen { padding: 40px 20px; align-items: center; }
+        .login-title { text-align: center; margin-bottom: 30px; }
+        .login-title h2 { margin: 0; font-size: 20px; font-weight: normal; }
+        .login-title h1 { margin: 0; font-size: 36px; letter-spacing: 2px; }
+        .input-group { display: flex; width: 100%; max-width: 350px; margin-bottom: 15px; }
+        .input-label { background: #666; color: #000; width: 100px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; border: 1px solid #444; border-right: none; }
+        .input-field { flex: 1; padding: 10px; border: 2px solid #666; font-size: 18px; outline: none; }
+        .login-btn { margin-top: 20px; padding: 10px 40px; background: #eee; border: 1px solid #999; font-size: 16px; cursor: pointer; }
+        .login-btn:hover { background: #ddd; }
+        .warning-text { color: red; font-size: 14px; margin-top: 40px; text-align: left; width: 100%; max-width: 350px; line-height: 1.5; }
+
+        /* --- 設定画面 (列車番号・路線選択) --- */
+        .setup-screen { padding: 20px; }
+        .setup-screen h2 { border-bottom: 2px solid #333; padding-bottom: 5px; }
+        .setup-row { display: flex; flex-direction: column; margin-bottom: 15px; }
+        .setup-row label { font-weight: bold; margin-bottom: 5px; }
+        .setup-row select, .setup-row input { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+        .blue-btn { background: #0056b3; color: #fff; border: none; padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 4px; text-align: center; margin-top: 20px; }
+        
+        /* --- スタフ (運転士時刻表) 画面 --- */
+        #staff-screen { background: #fff; }
+        .header-black { background: #000; color: #fff; padding: 10px 15px; position: relative; height: 120px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; }
+        .top-status { display: flex; justify-content: space-between; align-items: flex-start; position: absolute; top: 10px; left: 15px; right: 15px; }
+        .badges { display: flex; gap: 10px; }
+        .badge { background: #444; padding: 5px 10px; font-size: 12px; border-radius: 4px; border: 1px solid #666; }
+        .clock-area { text-align: right; }
+        .clock-time { font-size: 28px; font-weight: bold; font-family: monospace; letter-spacing: 2px; }
+        .settings-icon { font-size: 24px; cursor: pointer; margin-top: 5px; text-align: right; }
+        .station-display { margin-bottom: 5px; }
+        .station-now-label { font-size: 12px; color: #ccc; }
+        .station-now { font-size: 32px; color: #facc15; font-weight: bold; margin: 2px 0; }
+        .station-next { font-size: 14px; color: #fff; }
+
+        .staff-body { flex: 1; overflow-y: auto; padding: 10px; }
+        .staff-info-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 2px; }
+        .timetable { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+        .timetable th, .timetable td { border: 1px solid #000; padding: 6px 4px; text-align: center; font-size: 14px; }
+        .timetable th { background: #f9f9f9; }
+        .station-name { text-align: left !important; padding-left: 10px !important; }
+        .print-date { text-align: right; font-size: 12px; margin-top: 10px; color: #333; }
+
+        /* --- 設定オーバーレイ --- */
+        #settings-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; color: #fff; padding: 30px 20px; box-sizing: border-box; flex-direction: column; overflow-y: auto; }
+        #settings-overlay h3 { border-bottom: 1px solid #555; padding-bottom: 10px; margin-top: 0; }
+        .setting-item { margin-bottom: 20px; display: flex; flex-direction: column; }
+        .setting-item label { margin-bottom: 5px; font-size: 14px; color: #aaa; }
+        .setting-item select { padding: 8px; font-size: 16px; background: #333; color: #fff; border: 1px solid #555; }
+        .setting-btn { padding: 10px; background: #444; color: #fff; border: 1px solid #666; cursor: pointer; margin-bottom: 5px; }
+        .return-btn { background: #0056b3; color: #fff; border: none; padding: 12px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 20px; text-align: center; border-radius: 4px; }
+        .logout-btn { background: #cc0000; color: #fff; border: none; padding: 15px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: auto; }
+        .close-btn { background: #555; margin-top: 10px; padding: 15px; text-align: center; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div id="login-screen" class="screen active">
+        <div class="login-title">
+            <h2>列車位置情報案内システム</h2>
+            <h1>トコトコ</h1>
+        </div>
+        <div id="login-error" class="error-msg"></div>
+        <div class="input-group">
+            <div class="input-label">ID</div>
+            <input type="text" id="userid" class="input-field">
+        </div>
+        <div class="input-group">
+            <div class="input-label">パスワード</div>
+            <input type="password" id="password" class="input-field">
+        </div>
+        <button class="login-btn" onclick="checkLogin()">ログイン</button>
+        <div class="warning-text">
+            尾羽急電鉄および尾羽急電鉄グループ会社社員以外の使用を禁止します。<br><br>
+            列車見張りには使用しないでください。
+        </div>
+    </div>
+
+    <div id="train-num-screen" class="screen setup-screen">
+        <h2>列車番号入力</h2>
+        <div id="train-num-error" class="error-msg"></div>
+        <div class="setup-row">
+            <label>列車番号 (半角英数字3桁)</label>
+            <input type="text" id="train-number" maxlength="3" placeholder="例: 12A">
+        </div>
+        <button class="blue-btn" onclick="checkTrainNum()">次へ</button>
+    </div>
+
+    <div id="route-setup-screen" class="screen setup-screen">
+        <h2>運行設定</h2>
+        <div class="setup-row">
+            <label>路線</label>
+            <select id="line-select" onchange="updateTypes()"></select>
+        </div>
+        <div class="setup-row">
+            <label>種別</label>
+            <select id="type-select" onchange="updateStations()"></select>
+        </div>
+        <div class="setup-row">
+            <label>始発駅</label>
+            <select id="start-select"></select>
+        </div>
+        <div class="setup-row">
+            <label>行先駅</label>
+            <select id="end-select"></select>
+        </div>
+        <button class="blue-btn" onclick="generateStaff()">選択完了</button>
+    </div>
+
+    <div id="staff-screen" class="screen">
+        <div class="header-black">
+            <div class="top-status">
+                <div class="badges">
+                    <div class="badge">両数: <span id="disp-cars">4</span>両</div>
+                    <div class="badge" id="disp-crew">ワンマン</div>
+                </div>
+                <div class="clock-area">
+                    <div class="clock-time" id="real-clock">00:00:00</div>
+                    <div class="settings-icon" onclick="openSettings()">⚙️</div>
+                </div>
+            </div>
+            <div class="station-display">
+                <div class="station-now-label">ただいま</div>
+                <div class="station-now" id="disp-now-station">-</div>
+                <div class="station-next">次停車駅: <span id="disp-next-station">-</span></div>
+            </div>
+        </div>
+        <div class="staff-body">
+            <div class="staff-info-header">
+                <div>列車番号: <span id="staff-train-num"></span></div>
+                <div>種別: <span id="staff-type"></span></div>
+            </div>
+            <table class="timetable">
+                <thead>
+                    <tr><th style="width: 50%;">停車場名</th><th style="width: 25%;">着</th><th style="width: 25%;">発</th></tr>
+                </thead>
+                <tbody id="timetable-body"></tbody>
+            </table>
+            <div class="print-date" id="print-date">印刷: </div>
+        </div>
+    </div>
+
+    <div id="settings-overlay">
+        <h3>設定メニュー</h3>
+        <p style="font-size: 12px; color: #ccc;">アクセス時刻: <span id="access-time"></span></p>
+        
+        <button class="return-btn" onclick="returnToStart()">最初の画面(列番入力)に戻る</button>
+
+        <div class="setting-item">
+            <label>両数変更</label>
+            <select id="set-cars" onchange="document.getElementById('disp-cars').innerText = this.value">
+                <option value="2">2両</option><option value="4" selected>4両</option>
+                <option value="6">6両</option><option value="8">8両</option>
+            </select>
+        </div>
+        <div class="setting-item">
+            <label>乗務員設定</label>
+            <select id="set-crew" onchange="document.getElementById('disp-crew').innerText = this.value">
+                <option value="ワンマン">ワンマン</option><option value="ツーマン">ツーマン</option>
+            </select>
+        </div>
+        <div class="setting-item">
+            <label>現在時刻設定</label>
+            <button class="setting-btn" onclick="alert('自動で時刻を合わせました。')">自動で合わせる</button>
+            <button class="setting-btn" onclick="alert('手動時刻設定モード（未実装）')">手動で合わせる</button>
+        </div>
+
+        <button class="logout-btn" id="logout-btn" onclick="handleLogout()">ログアウト</button>
+        <div class="close-btn" onclick="document.getElementById('settings-overlay').style.display = 'none'">閉じる</div>
+    </div>
+</div>
+
+<script>
+    // --- 状態管理 ---
+    let loginTime = "";
+    let clockInterval;
+    let logoutStep = 0;
+
+    // --- 夏季判定 (6月〜8月) ---
+    const currentMonth = new Date().getMonth() + 1;
+    const isSummer = (currentMonth >= 6 && currentMonth <= 8);
+
+    // --- 駅データ構造 ---
+    const stationData = {
+        "尾羽急本線": {
+            "各駅停車": ["尾羽原", "井口", "梅郷", "雲中", "安越", "十川真砂橋", "千峰", "南雲谷", "雲谷", "長峰", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "穂", "瀬舞", "余美", "千鳥"],
+            "準急": ["尾羽原", "井口", "梅郷", "雲中", "安越", "十川真砂橋", "千峰", "南雲谷", "雲谷", "長峰", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "瀬舞", "千鳥"],
+            "快速": ["尾羽原", "井口", "雲中", "安越", "十川真砂橋", "千峰", "雲谷", "長峰", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "瀬舞", "千鳥"],
+            "急行": isSummer 
+                ? ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "瀬舞", "千鳥"] 
+                : ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "紀田", "瀬舞", "千鳥"],
+            "エアポート急行": ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "瀬舞", "千鳥"],
+            "快速急行": ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "紀田", "千鳥"],
+            "回送": isSummer 
+                ? ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "瀬舞", "千鳥"] 
+                : ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "紀田", "瀬舞", "千鳥"],
+            "試運転": isSummer 
+                ? ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "舞子台", "紀田", "瀬舞", "千鳥"] 
+                : ["尾羽原", "井口", "安越", "千峰", "雲谷", "西高徳", "高徳", "高徳車庫", "明神宮", "紀田", "瀬舞", "千鳥"],
+            "AIR特急「やまかぜ」": ["尾羽原", "高徳空港", "金田空港西", "金田新都心", "金田新都心南"],
+            "スーパーつばき": ["尾羽原", "十葉御砂橋", "明神前", "高徳", "新高徳", "高徳空港", "百鳥", "金田新都心", "金田新都心南"],
+            "つばき": ["尾羽原", "高徳中央", "十葉御砂橋", "明神前", "高徳", "新高徳", "高徳空港", "百鳥", "金田市", "金田新都心", "金田新都心南"]
+        },
+        "尾羽急高速線": {
+            "各駅停車": ["千鳥", "問屋町", "問屋蔵前", "赤堀大沢", "赤堀", "新赤堀", "塚野", "金田", "百鳥", "西百鳥", "支線尾羽", "北尾羽"],
+            "準急": ["千鳥", "問屋町", "赤堀", "新赤堀", "金田", "百鳥", "支線尾羽", "北尾羽"],
+            "急行": ["千鳥", "赤堀", "新赤堀", "金田", "西百鳥", "支線尾羽", "北尾羽"],
+            "快速急行": ["千鳥", "金田", "百鳥", "北尾羽"]
+        },
+        "空港線": {
+            "各駅停車": ["高徳", "新高徳", "高徳整備場北", "高徳空港"],
+            "快速": ["高徳", "高徳整備場北", "高徳空港"],
+            "エアポート急行": ["高徳", "高徳整備場北", "高徳空港"]
+        },
+        "千鳥支線": {
+            "各駅停車": ["千鳥", "南千鳥", "奥千鳥", "千鳥三道", "本郷神瑞前", "本郷"],
+            "快速": ["千鳥", "南千鳥", "奥千鳥", "本郷"],
+            "急行": ["千鳥", "奥千鳥", "本郷"],
+            "特急": ["千鳥", "本郷"]
+        },
+        "飛金線": {
+            "ほしみ": ["尾羽原", "井口", "水橋", "飛岡", "飛水竜田", "南竜田", "大原", "新塚", "飛水柏原", "上金田", "金田新都心"],
+            "特急": ["尾羽原", "飛水竜田", "金田新都心"]
+        },
+        "尾羽支線": {
+            "各駅停車（はね）": ["尾羽原", "北尾羽", "百鳥", "南金亀", "金田空港", "金田新都心"],
+            "エアポート急行": ["尾羽原", "百鳥", "金田空港", "金田新都心"]
+        },
+        "金田線": {
+            "各駅停車": ["金田", "笠橋", "新箱倉金田", "南箱倉", "金田市", "金田空港", "金田新都心"],
+            "急行": ["金田", "金田空港", "金田新都心"],
+            "快速急行": ["金田", "金田新都心"]
+        }
+    };
+
+    // --- 画面切り替えユーティリティ ---
+    function showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+    }
+
+    function showError(elementId, msg) {
+        const el = document.getElementById(elementId);
+        el.innerText = msg;
+        setTimeout(() => { el.innerText = ""; }, 10000);
+    }
+
+    // --- 1. ログイン処理 ---
+    function checkLogin() {
+        const id = document.getElementById('userid').value;
+        const pass = document.getElementById('password').value;
+        if (id === "8400027000" && pass === "oby11tug") {
+            loginTime = new Date().toLocaleString('ja-JP');
+            document.getElementById('access-time').innerText = loginTime;
+            showScreen('train-num-screen');
+        } else {
+            showError('login-error', "※IDまたはパスワードが間違っています。");
+        }
+    }
+
+    // --- 2. 列車番号チェック ---
+    function checkTrainNum() {
+        const tNum = document.getElementById('train-number').value;
+        const regex = /^[a-zA-Z0-9]{3}$/;
+        if (regex.test(tNum)) {
+            initRouteSelect();
+            showScreen('route-setup-screen');
+        } else {
+            showError('train-num-error', "※半角英数字3桁のみ利用いただけます。");
+        }
+    }
+
+    // --- 3. 路線・種別連動プルダウン ---
+    function initRouteSelect() {
+        const lineSelect = document.getElementById('line-select');
+        lineSelect.innerHTML = "";
+        Object.keys(stationData).forEach(line => {
+            lineSelect.add(new Option(line, line));
+        });
+        updateTypes();
+    }
+
+    function updateTypes() {
+        const line = document.getElementById('line-select').value;
+        const typeEl = document.getElementById('type-select');
+        typeEl.innerHTML = "";
+        Object.keys(stationData[line]).forEach(type => {
+            typeEl.add(new Option(type, type));
+        });
+        updateStations();
+    }
+
+    function updateStations() {
+        const line = document.getElementById('line-select').value;
+        const type = document.getElementById('type-select').value;
+        const stations = stationData[line][type];
+        
+        const startEl = document.getElementById('start-select');
+        const endEl = document.getElementById('end-select');
+        startEl.innerHTML = "";
+        endEl.innerHTML = "";
+        
+        stations.forEach(st => {
+            startEl.add(new Option(st, st));
+            endEl.add(new Option(st, st));
+        });
+    }
+
+    // --- 4. スタフ生成 ---
+    function generateStaff() {
+        const line = document.getElementById('line-select').value;
+        const type = document.getElementById('type-select').value;
+        const start = document.getElementById('start-select').value;
+        const end = document.getElementById('end-select').value;
+        const tNum = document.getElementById('train-number').value;
+
+        const stations = stationData[line][type];
+        let startIndex = stations.indexOf(start);
+        let endIndex = stations.indexOf(end);
+
+        // 始発と行先の整合性（簡易的に逆順も許容してスライス）
+        let routeStations = [];
+        if (startIndex <= endIndex) {
+            routeStations = stations.slice(startIndex, endIndex + 1);
+        } else {
+            routeStations = stations.slice(endIndex, startIndex + 1).reverse();
+        }
+
+        if(routeStations.length < 2) {
+            alert("始発と行先を正しく選択してください。");
+            return;
+        }
+
+        // --- 種別ごとの駅間所要時間設定 ---
+        let stationInterval = 3; // デフォルト
+        if (type === "各駅停車" || type === "各駅停車（はね）" || type === "快速") {
+            stationInterval = 3;
+        } else if (type === "急行" || type === "準急" || type === "エアポート急行" || type === "快速急行" || type === "回送" || type === "試運転") {
+            stationInterval = 5;
+        } else if (type === "AIR特急「やまかぜ」" || type === "スーパーつばき" || type === "つばき" || type === "特急" || type === "ほしみ") {
+            stationInterval = 7;
+        }
+
+        // UI反映
+        document.getElementById('staff-train-num').innerText = tNum;
+        // 夏ダイヤ表記の追加条件に「回送」「試運転」も追加
+        const isSummerApplied = isSummer && line === "尾羽急本線" && (type === "急行" || type === "回送" || type === "試運転");
+        document.getElementById('staff-type').innerText = type + (isSummerApplied ? " (夏ダイヤ)" : "");
+        
+        // ヘッダ駅表示
+        document.getElementById('disp-now-station').innerText = routeStations[0];
+        document.getElementById('disp-next-station').innerText = routeStations[1];
+
+        // 時刻表作成 (ダミーの時刻計算)
+        let baseTime = new Date();
+        baseTime.setMinutes(baseTime.getMinutes() + 5); // 生成から5分後を始発に設定
+        const tbody = document.getElementById('timetable-body');
+        tbody.innerHTML = "";
+
+        // ランダムな秒（00, 15, 30, 45）を取得する関数
+        const secondsOptions = ["00", "15", "30", "45"];
+        const getRandomSecond = () => secondsOptions[Math.floor(Math.random() * secondsOptions.length)];
+
+        routeStations.forEach((st, index) => {
+            let isFirst = (index === 0);
+            let isLast = (index === routeStations.length - 1);
+            let isPass = (st.includes("通過時刻のみ")); // 高徳車庫用
+
+            let arrTime = new Date(baseTime.getTime());
+            let depTime = new Date(baseTime.getTime() + 1 * 60000); // 1分停車
+            
+            // 時・分までの文字列ベースを作成
+            let arrStrBase = arrTime.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+            let depStrBase = depTime.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+
+            // 秒の部分にランダムな値を結合して整形
+            let arrStr = isFirst ? "-" : (isPass ? "↓" : `${arrStrBase}:${getRandomSecond()}`);
+            let depStr = isLast ? "-" : `${depStrBase}:${getRandomSecond()}`;
+
+            let displaySt = st.replace("（通過時刻のみ記載）", "");
+
+            tbody.innerHTML += `
+                <tr>
+                    <td class="station-name">${displaySt}</td>
+                    <td>${arrStr}</td>
+                    <td>${depStr}</td>
+                </tr>
+            `;
+            // 次の駅までの時間を足す
+            baseTime = new Date(depTime.getTime() + stationInterval * 60000); 
+        });
+
+        // 印刷日時
+        const now = new Date();
+        document.getElementById('print-date').innerText = `印刷: ${now.getFullYear()}年 ${now.getMonth()+1}月 ${now.getDate()}日`;
+
+        // 時計開始
+        startClock();
+        showScreen('staff-screen');
+    }
+
+    // --- 時計機能 ---
+    function startClock() {
+        if(clockInterval) clearInterval(clockInterval);
+        const clockEl = document.getElementById('real-clock');
+        const update = () => {
+            clockEl.innerText = new Date().toLocaleTimeString('ja-JP', {hour12:false});
+        };
+        update();
+        clockInterval = setInterval(update, 1000);
+    }
+
+    // --- 設定・ログアウト機能 ---
+    function openSettings() {
+        logoutStep = 0;
+        document.getElementById('logout-btn').innerText = "ログアウト";
+        document.getElementById('settings-overlay').style.display = 'flex';
+    }
+
+    function returnToStart() {
+        document.getElementById('settings-overlay').style.display = 'none';
+        showScreen('train-num-screen');
+    }
+
+    function handleLogout() {
+        const btn = document.getElementById('logout-btn');
+        if (logoutStep === 0) {
+            btn.innerText = "本当にログアウトしますか？";
+            logoutStep = 1;
+        } else {
+            // ログアウト処理（リロード）
+            location.reload();
+        }
+    }
+</script>
+
+</body>
+</html>
